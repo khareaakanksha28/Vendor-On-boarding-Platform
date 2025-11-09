@@ -1195,11 +1195,22 @@ def export_applications_csv():
 @app.route(f'{Config.API_PREFIX}/import/kaggle-data', methods=['POST'])
 @role_required('admin')
 def import_kaggle_data():
-    """Import applications from Kaggle CSV data"""
+    """Import applications from Kaggle CSV data - clears existing data first"""
     try:
         import pandas as pd
         import json
         import os
+        
+        # Clear existing applications first
+        print("🗑️  Clearing existing applications...")
+        ApplicationComment.query.delete()
+        Document.query.delete()
+        AuditLog.query.filter(AuditLog.application_id.isnot(None)).delete()
+        PIIData.query.delete()
+        SecurityControl.query.delete()
+        Application.query.delete()
+        db.session.commit()
+        print("✅ Existing data cleared")
         
         # Look for CSV files in data directory (relative to project root)
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -1220,16 +1231,15 @@ def import_kaggle_data():
         
         # Read CSV
         df = pd.read_csv(csv_file)
+        print(f"📂 Loaded {len(df)} records from {csv_file}")
         
         imported_count = 0
         skipped_count = 0
+        flagged_count = 0
+        pending_count = 0
+        approved_count = 0
         
         for _, row in df.iterrows():
-            # Check if application already exists (by email)
-            if Application.query.filter_by(email=row.get('email', '')).first():
-                skipped_count += 1
-                continue
-            
             # Map CSV columns to Application model
             company_name = row.get('company_name', f"Company {row.get('application_id', 'Unknown')}")
             email = row.get('email', f"contact{imported_count}@example.com")
@@ -1250,15 +1260,18 @@ def import_kaggle_data():
                 status = 'flagged'
                 fraud_score = 0.8
                 risk_score = 30
-            elif is_fraud == 0 and security_count >= 4:
-                # Auto-approve legitimate applications with good security
+                flagged_count += 1
+            elif is_fraud == 0 and security_count >= 10:
+                # Auto-approve legitimate applications with excellent security
                 status = 'approved'
                 fraud_score = 0.05
                 risk_score = 90
+                approved_count += 1
             else:
                 status = 'pending_review'
                 fraud_score = 0.1
                 risk_score = 75
+                pending_count += 1
             
             # Create application
             app = Application(
@@ -1331,11 +1344,19 @@ def import_kaggle_data():
         
         db.session.commit()
         
+        print(f"✅ Import complete: {imported_count} imported, {skipped_count} skipped")
+        print(f"   Status breakdown: {flagged_count} flagged, {pending_count} pending, {approved_count} approved")
+        
         return jsonify({
             'message': 'Data imported successfully',
             'imported': imported_count,
             'skipped': skipped_count,
-            'total': len(df)
+            'total': len(df),
+            'status_breakdown': {
+                'flagged': flagged_count,
+                'pending': pending_count,
+                'approved': approved_count
+            }
         }), 200
     
     except Exception as e:

@@ -474,13 +474,16 @@ function App() {
       const data = await response.json();
       
       if (response.ok) {
-        setSuccess(`Successfully imported ${data.imported} applications from Kaggle data!`);
-        // Refresh dashboard
-        fetchDashboard();
-        // Optionally show all applications
+        const breakdown = data.status_breakdown || {};
+        setSuccess(`Successfully imported ${data.imported} applications! (${breakdown.flagged || 0} flagged, ${breakdown.pending || 0} pending, ${breakdown.approved || 0} approved)`);
+        // Refresh dashboard to show new stats
+        setTimeout(() => {
+          fetchDashboard();
+        }, 500);
+        // Show all applications after a short delay
         setTimeout(() => {
           handleCardClick('all');
-        }, 1000);
+        }, 1500);
       } else {
         setError(data.error || 'Failed to import data');
       }
