@@ -1,0 +1,13 @@
+{
+  "files": {
+    "main.css": "/Vendor-On-boarding-Platform/static/css/main.021fabc7.css",
+    "main.js": "/Vendor-On-boarding-Platform/static/js/main.695cc7ae.js",
+    "index.html": "/Vendor-On-boarding-Platform/index.html",
+    "main.021fabc7.css.map": "/Vendor-On-boarding-Platform/static/css/main.021fabc7.css.map",
+    "main.695cc7ae.js.map": "/Vendor-On-boarding-Platform/static/js/main.695cc7ae.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.021fabc7.css",
+    "static/js/main.695cc7ae.js"
+  ]
+}
