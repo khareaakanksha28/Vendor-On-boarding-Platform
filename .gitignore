@@ -1,0 +1,42 @@
+# Dependencies
+node_modules/
+venv/
+env/
+.venv/
+
+# Environment variables
+.env
+kaggle.json
+
+# Data files
+data/
+*.zip
+*.csv
+*.pkl
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Build files
+dist/
+build/
+*.pyc
+__pycache__/
+
+# Model files (keep trained models, ignore legacy)
+backend/fraud_model.pkl
+backend/fraud_scaler.pkl
+*.pkl
+!models/fraud_detection_models.pkl
+
