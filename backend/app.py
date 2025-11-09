@@ -1,12 +1,14 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.utils import secure_filename
 import hashlib
 from datetime import datetime, timedelta
 import re
 import os
+import uuid
 from functools import wraps
 from config import Config
 
@@ -140,6 +142,23 @@ class ApplicationComment(db.Model):
     # Relationships
     user = db.relationship('User', backref='comments')
     application = db.relationship('Application', backref='comments')
+
+
+class Document(db.Model):
+    __tablename__ = 'documents'
+    id = db.Column(db.Integer, primary_key=True)
+    application_id = db.Column(db.Integer, db.ForeignKey('applications.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    filename = db.Column(db.String(255), nullable=False)
+    original_filename = db.Column(db.String(255), nullable=False)
+    file_path = db.Column(db.String(500), nullable=False)
+    file_type = db.Column(db.String(50))  # certificate, contract, etc.
+    file_size = db.Column(db.Integer)  # in bytes
+    uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    user = db.relationship('User', backref='uploaded_documents')
+    application = db.relationship('Application', backref='documents')
 
 
 # ============== UTILITY FUNCTIONS ==============
@@ -851,6 +870,260 @@ def get_audit_logs():
         'pages': pagination.pages,
         'current_page': page
     }), 200
+
+
+# ============== USER MANAGEMENT ENDPOINTS ==============
+
+@app.route(f'{Config.API_PREFIX}/users', methods=['GET'])
+@role_required('admin')
+def get_users():
+    """Get all users (admin only)"""
+    page = int(request.args.get('page', 1))
+    per_page = int(request.args.get('per_page', 50))
+    
+    pagination = User.query.order_by(User.id.desc()).paginate(
+        page=page, per_page=per_page, error_out=False
+    )
+    
+    users = [{
+        'id': u.id,
+        'username': u.username,
+        'email': u.email,
+        'role': u.role,
+        'created_at': None  # Add if you have this field
+    } for u in pagination.items]
+    
+    return jsonify({
+        'users': users,
+        'total': pagination.total,
+        'pages': pagination.pages,
+        'current_page': page
+    }), 200
+
+
+@app.route(f'{Config.API_PREFIX}/users/<int:user_id>', methods=['PUT'])
+@role_required('admin')
+def update_user(user_id):
+    """Update user (admin only)"""
+    data = request.get_json()
+    admin_id = int(get_jwt_identity())
+    
+    user = User.query.get_or_404(user_id)
+    
+    # Prevent admin from modifying themselves
+    if user_id == admin_id and data.get('role') != user.role:
+        return jsonify({'error': 'Cannot change your own role'}), 400
+    
+    # Update fields
+    if 'role' in data:
+        user.role = data['role']
+    if 'email' in data:
+        user.email = data['email']
+    
+    # Create audit log
+    log_audit(
+        None,
+        admin_id,
+        'USER_UPDATED',
+        f"User {user.username} updated by admin",
+        request.remote_addr
+    )
+    
+    db.session.commit()
+    
+    return jsonify({
+        'message': 'User updated successfully',
+        'user': {
+            'id': user.id,
+            'username': user.username,
+            'email': user.email,
+            'role': user.role
+        }
+    }), 200
+
+
+@app.route(f'{Config.API_PREFIX}/users/<int:user_id>', methods=['DELETE'])
+@role_required('admin')
+def delete_user(user_id):
+    """Delete user (admin only)"""
+    admin_id = int(get_jwt_identity())
+    
+    user = User.query.get_or_404(user_id)
+    
+    # Prevent admin from deleting themselves
+    if user_id == admin_id:
+        return jsonify({'error': 'Cannot delete your own account'}), 400
+    
+    username = user.username
+    
+    # Create audit log before deletion
+    log_audit(
+        None,
+        admin_id,
+        'USER_DELETED',
+        f"User {username} deleted by admin",
+        request.remote_addr
+    )
+    
+    db.session.delete(user)
+    db.session.commit()
+    
+    return jsonify({'message': f'User {username} deleted successfully'}), 200
+
+
+# ============== DOCUMENT UPLOAD ENDPOINTS ==============
+
+@app.route(f'{Config.API_PREFIX}/applications/<int:app_id>/documents', methods=['POST'])
+@jwt_required()
+def upload_document(app_id):
+    """Upload a document for an application"""
+    
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file provided'}), 400
+    
+    file = request.files['file']
+    file_type = request.form.get('file_type', 'document')
+    
+    if file.filename == '':
+        return jsonify({'error': 'No file selected'}), 400
+    
+    # Validate file type
+    allowed_extensions = {'pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png', 'txt'}
+    filename = file.filename
+    if '.' not in filename or filename.rsplit('.', 1)[1].lower() not in allowed_extensions:
+        return jsonify({'error': 'Invalid file type. Allowed: PDF, DOC, DOCX, JPG, PNG, TXT'}), 400
+    
+    # Validate file size (max 10MB)
+    file.seek(0, os.SEEK_END)
+    file_size = file.tell()
+    file.seek(0)
+    
+    if file_size > 10 * 1024 * 1024:  # 10MB
+        return jsonify({'error': 'File too large. Maximum size: 10MB'}), 400
+    
+    # Create uploads directory
+    uploads_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'uploads', 'documents')
+    os.makedirs(uploads_dir, exist_ok=True)
+    
+    # Generate unique filename
+    file_ext = filename.rsplit('.', 1)[1].lower()
+    unique_filename = f"{uuid.uuid4()}.{file_ext}"
+    file_path = os.path.join(uploads_dir, unique_filename)
+    
+    # Save file
+    file.save(file_path)
+    
+    # Create document record
+    user_id = int(get_jwt_identity())
+    app = Application.query.get_or_404(app_id)
+    
+    document = Document(
+        application_id=app_id,
+        user_id=user_id,
+        filename=unique_filename,
+        original_filename=secure_filename(filename),
+        file_path=file_path,
+        file_type=file_type,
+        file_size=file_size
+    )
+    
+    db.session.add(document)
+    
+    # Create audit log
+    log_audit(
+        app_id,
+        user_id,
+        'DOCUMENT_UPLOADED',
+        f"Document uploaded: {secure_filename(filename)}",
+        request.remote_addr
+    )
+    
+    db.session.commit()
+    
+    return jsonify({
+        'message': 'Document uploaded successfully',
+        'document': {
+            'id': document.id,
+            'filename': document.original_filename,
+            'file_type': document.file_type,
+            'file_size': document.file_size,
+            'uploaded_at': document.uploaded_at.isoformat() if document.uploaded_at else None
+        }
+    }), 201
+
+
+@app.route(f'{Config.API_PREFIX}/applications/<int:app_id>/documents', methods=['GET'])
+@jwt_required()
+def get_application_documents(app_id):
+    """Get all documents for an application"""
+    app = Application.query.get_or_404(app_id)
+    
+    documents = Document.query.filter_by(application_id=app_id)\
+        .order_by(Document.uploaded_at.desc()).all()
+    
+    return jsonify({
+        'documents': [{
+            'id': d.id,
+            'filename': d.original_filename,
+            'file_type': d.file_type,
+            'file_size': d.file_size,
+            'uploaded_by': d.user.username if d.user else 'Unknown',
+            'uploaded_at': d.uploaded_at.isoformat() if d.uploaded_at else None
+        } for d in documents]
+    }), 200
+
+
+@app.route(f'{Config.API_PREFIX}/documents/<int:doc_id>/download', methods=['GET'])
+@jwt_required()
+def download_document(doc_id):
+    """Download a document"""
+    
+    document = Document.query.get_or_404(doc_id)
+    
+    if not os.path.exists(document.file_path):
+        return jsonify({'error': 'File not found'}), 404
+    
+    return send_file(
+        document.file_path,
+        as_attachment=True,
+        download_name=document.original_filename
+    )
+
+
+@app.route(f'{Config.API_PREFIX}/documents/<int:doc_id>', methods=['DELETE'])
+@jwt_required()
+def delete_document(doc_id):
+    """Delete a document"""
+    
+    document = Document.query.get_or_404(doc_id)
+    user_id = int(get_jwt_identity())
+    
+    # Only allow deletion by uploader or admin
+    if document.user_id != user_id:
+        user = User.query.get(user_id)
+        if not user or user.role != 'admin':
+            return jsonify({'error': 'Unauthorized'}), 403
+    
+    # Delete file
+    if os.path.exists(document.file_path):
+        try:
+            os.remove(document.file_path)
+        except:
+            pass
+    
+    # Create audit log
+    log_audit(
+        document.application_id,
+        user_id,
+        'DOCUMENT_DELETED',
+        f"Document deleted: {document.original_filename}",
+        request.remote_addr
+    )
+    
+    db.session.delete(document)
+    db.session.commit()
+    
+    return jsonify({'message': 'Document deleted successfully'}), 200
 
 
 # ============== EXPORT ENDPOINTS ==============

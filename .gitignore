@@ -18,6 +18,12 @@ data/
 *.log
 npm-debug.log*
 
+# Uploads
+uploads/
+*.pdf
+*.doc
+*.docx
+
 # OS files
 .DS_Store
 Thumbs.db

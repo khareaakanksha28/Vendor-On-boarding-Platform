@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Shield, User, AlertTriangle, CheckCircle, XCircle, Loader, TrendingUp, Activity, Lock, Eye, BarChart3, Zap, Sparkles, ArrowRight, Building2, Mail, Phone, MapPin, FileText, Settings, EyeOff, Search, Download, MessageSquare, Send } from 'lucide-react';
+import { Shield, User, AlertTriangle, CheckCircle, XCircle, Loader, TrendingUp, Activity, Lock, Eye, BarChart3, Zap, Sparkles, ArrowRight, Building2, Mail, Phone, MapPin, FileText, Settings, EyeOff, Search, Download, MessageSquare, Send, Users, Upload, Trash2, Edit } from 'lucide-react';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001/api/v1';
 
@@ -66,6 +66,12 @@ function App() {
   const [reviewComment, setReviewComment] = useState('');
   const [reviewStatus, setReviewStatus] = useState('');
   const [newComment, setNewComment] = useState('');
+  const [showUserManagement, setShowUserManagement] = useState(false);
+  const [users, setUsers] = useState([]);
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [selectedFileType, setSelectedFileType] = useState('document');
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const [documents, setDocuments] = useState([]);
 
   useEffect(() => {
     if (token) {
@@ -227,6 +233,184 @@ function App() {
       } else {
         const data = await response.json();
         setError(data.error || 'Failed to add comment');
+      }
+    } catch (err) {
+      setError('Network error. Please try again.');
+    }
+  };
+
+  const fetchUsers = async () => {
+    try {
+      const response = await fetch(`${API_URL}/users`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setUsers(data.users || []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch users:', err);
+      setUsers([]);
+    }
+  };
+
+  const handleUpdateUser = async (userId, updates) => {
+    try {
+      const response = await fetch(`${API_URL}/users/${userId}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(updates)
+      });
+
+      if (response.ok) {
+        setSuccess('User updated successfully!');
+        fetchUsers();
+      } else {
+        const data = await response.json();
+        setError(data.error || 'Failed to update user');
+      }
+    } catch (err) {
+      setError('Network error. Please try again.');
+    }
+  };
+
+  const handleDeleteUser = async (userId) => {
+    if (!window.confirm('Are you sure you want to delete this user?')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_URL}/users/${userId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (response.ok) {
+        setSuccess('User deleted successfully!');
+        fetchUsers();
+      } else {
+        const data = await response.json();
+        setError(data.error || 'Failed to delete user');
+      }
+    } catch (err) {
+      setError('Network error. Please try again.');
+    }
+  };
+
+  const handleFileUpload = async (appId, file, fileType = 'document') => {
+    if (!file) {
+      setError('Please select a file');
+      return;
+    }
+
+    // Validate file size (10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      setError('File too large. Maximum size: 10MB');
+      return;
+    }
+
+    setUploadingFile(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('file_type', fileType);
+
+      const response = await fetch(`${API_URL}/applications/${appId}/documents`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+        body: formData
+      });
+
+      if (response.ok) {
+        setSuccess('Document uploaded successfully!');
+        setSelectedFile(null);
+        fetchApplicationDetails(appId);
+      } else {
+        const data = await response.json();
+        setError(data.error || 'Failed to upload document');
+      }
+    } catch (err) {
+      setError('Network error. Please try again.');
+    } finally {
+      setUploadingFile(false);
+    }
+  };
+
+  const fetchApplicationDocuments = async (appId) => {
+    try {
+      const response = await fetch(`${API_URL}/applications/${appId}/documents`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setDocuments(data.documents || []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch documents:', err);
+      setDocuments([]);
+    }
+  };
+
+  const handleDownloadDocument = async (docId, filename) => {
+    try {
+      const response = await fetch(`${API_URL}/documents/${docId}/download`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (response.ok) {
+        const blob = await response.blob();
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = downloadUrl;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(downloadUrl);
+        setSuccess('Document downloaded!');
+      } else {
+        setError('Failed to download document');
+      }
+    } catch (err) {
+      setError('Network error. Please try again.');
+    }
+  };
+
+  const handleDeleteDocument = async (docId, appId) => {
+    if (!window.confirm('Are you sure you want to delete this document?')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_URL}/documents/${docId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (response.ok) {
+        setSuccess('Document deleted successfully!');
+        fetchApplicationDetails(appId);
+        fetchApplicationDocuments(appId);
+      } else {
+        const data = await response.json();
+        setError(data.error || 'Failed to delete document');
       }
     } catch (err) {
       setError('Network error. Please try again.');
@@ -817,9 +1001,24 @@ function App() {
       </nav>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Import Kaggle Data Button - Admin Only */}
+        {/* Admin Actions - Admin Only */}
         {user?.role === 'admin' && !selectedView && (
-          <div className="mb-6 flex justify-end">
+          <div className="mb-6 flex justify-end gap-3">
+            <button
+              onClick={() => {
+                setShowUserManagement(true);
+                fetchUsers();
+              }}
+              className="px-4 py-2 rounded-lg font-medium transition-all hover:opacity-80 flex items-center gap-2"
+              style={{ 
+                background: 'var(--accent)',
+                color: 'var(--foreground)',
+                border: '1px solid var(--border)'
+              }}
+            >
+              <Users className="w-4 h-4" />
+              Manage Users
+            </button>
             <button
               onClick={handleImportKaggleData}
               disabled={loading}
@@ -1253,6 +1452,135 @@ function App() {
               </div>
             )}
 
+            {/* Documents Section */}
+            <div className="mt-6 p-6 rounded-xl" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
+              <h3 className="text-lg font-bold mb-4 flex items-center gap-2" style={{ color: 'var(--foreground)' }}>
+                <FileText className="w-5 h-5" />
+                Documents & Certificates
+              </h3>
+              
+              {/* Upload Document */}
+              <div className="mb-6">
+                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--foreground)' }}>
+                  Upload Document
+                </label>
+                <div className="flex gap-3">
+                  <input
+                    type="file"
+                    onChange={(e) => setSelectedFile(e.target.files[0])}
+                    accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.txt"
+                    className="flex-1 px-4 py-2 rounded-lg"
+                    style={{ 
+                      background: 'var(--input-background)',
+                      border: '1px solid var(--border)',
+                      color: 'var(--foreground)'
+                    }}
+                  />
+                  <select
+                    value={selectedFileType}
+                    onChange={(e) => setSelectedFileType(e.target.value)}
+                    className="px-4 py-2 rounded-lg"
+                    style={{ 
+                      background: 'var(--input-background)',
+                      border: '1px solid var(--border)',
+                      color: 'var(--foreground)'
+                    }}
+                  >
+                    <option value="document">Document</option>
+                    <option value="certificate">Certificate</option>
+                    <option value="contract">Contract</option>
+                    <option value="other">Other</option>
+                  </select>
+                  <button
+                    onClick={() => {
+                      if (selectedFile) {
+                        handleFileUpload(selectedApplication.id, selectedFile, selectedFileType);
+                      }
+                    }}
+                    disabled={!selectedFile || uploadingFile}
+                    className="px-4 py-2 rounded-lg font-medium transition-all hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    style={{ 
+                      background: 'linear-gradient(135deg, #8b5cf6, #6366f1)',
+                      color: '#ffffff',
+                      boxShadow: '0 4px 6px -1px rgba(139, 92, 246, 0.3)'
+                    }}
+                  >
+                    {uploadingFile ? (
+                      <>
+                        <Loader className="w-4 h-4 animate-spin" />
+                        Uploading...
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="w-4 h-4" />
+                        Upload
+                      </>
+                    )}
+                  </button>
+                </div>
+                <p className="text-xs mt-2" style={{ color: 'var(--muted-foreground)' }}>
+                  Supported: PDF, DOC, DOCX, JPG, PNG, TXT (Max 10MB)
+                </p>
+              </div>
+
+              {/* Documents List */}
+              <div className="space-y-3">
+                {selectedApplication.documents && selectedApplication.documents.length > 0 ? (
+                  selectedApplication.documents.map((doc) => (
+                    <div
+                      key={doc.id}
+                      className="p-4 rounded-lg flex items-center justify-between"
+                      style={{ 
+                        background: 'var(--muted)',
+                        border: '1px solid var(--border)'
+                      }}
+                    >
+                      <div className="flex items-center gap-3 flex-1">
+                        <FileText className="w-5 h-5" style={{ color: 'var(--muted-foreground)' }} />
+                        <div className="flex-1">
+                          <p className="text-sm font-medium" style={{ color: 'var(--foreground)' }}>
+                            {doc.filename}
+                          </p>
+                          <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                            {doc.file_type} • {(doc.file_size / 1024).toFixed(1)} KB
+                            {doc.uploaded_at && ` • ${new Date(doc.uploaded_at).toLocaleDateString()}`}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleDownloadDocument(doc.id, doc.filename)}
+                          className="p-2 rounded-lg transition-all hover:opacity-80"
+                          style={{ 
+                            background: 'var(--accent)',
+                            color: 'var(--foreground)'
+                          }}
+                          title="Download"
+                        >
+                          <Download className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteDocument(doc.id, selectedApplication.id)}
+                          className="p-2 rounded-lg transition-all hover:opacity-80"
+                          style={{ 
+                            background: 'var(--destructive)',
+                            color: '#ffffff'
+                          }}
+                          title="Delete"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-center py-4" style={{ color: 'var(--muted-foreground)' }}>
+                    No documents uploaded yet.
+                  </p>
+                )}
+              </div>
+            </div>
+
             {/* Comments Section */}
             <div className="mt-6 p-6 rounded-xl" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
               <h3 className="text-lg font-bold mb-4 flex items-center gap-2" style={{ color: 'var(--foreground)' }}>
@@ -1381,8 +1709,104 @@ function App() {
           </div>
         )}
 
+        {/* User Management Modal - Admin Only */}
+        {showUserManagement && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto" style={{ background: 'var(--card)' }}>
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-2xl font-bold" style={{ color: 'var(--foreground)' }}>
+                  User Management
+                </h3>
+                <button
+                  onClick={() => {
+                    setShowUserManagement(false);
+                    setUsers([]);
+                  }}
+                  className="p-2 rounded-lg transition-all hover:opacity-80"
+                  style={{ 
+                    background: 'var(--accent)',
+                    color: 'var(--foreground)'
+                  }}
+                >
+                  <XCircle className="w-5 h-5" />
+                </button>
+              </div>
+
+              {users.length === 0 ? (
+                <div className="text-center py-8">
+                  <Loader className="w-8 h-8 animate-spin mx-auto mb-4" style={{ color: 'var(--primary)' }} />
+                  <p style={{ color: 'var(--muted-foreground)' }}>Loading users...</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {users.map((u) => (
+                    <div
+                      key={u.id}
+                      className="p-4 rounded-lg flex items-center justify-between"
+                      style={{ 
+                        background: 'var(--muted)',
+                        border: '1px solid var(--border)'
+                      }}
+                    >
+                      <div className="flex items-center gap-4 flex-1">
+                        <div className="p-2 rounded-lg" style={{ background: 'var(--accent)' }}>
+                          <User className="w-5 h-5" style={{ color: 'var(--foreground)' }} />
+                        </div>
+                        <div className="flex-1">
+                          <p className="font-medium" style={{ color: 'var(--foreground)' }}>
+                            {u.username}
+                          </p>
+                          <p className="text-sm" style={{ color: 'var(--muted-foreground)' }}>
+                            {u.email}
+                          </p>
+                        </div>
+                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                          u.role === 'admin' ? 'bg-purple-100 text-purple-800' :
+                          u.role === 'reviewer' ? 'bg-blue-100 text-blue-800' :
+                          'bg-gray-100 text-gray-800'
+                        }`}>
+                          {u.role}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={u.role}
+                          onChange={(e) => handleUpdateUser(u.id, { role: e.target.value })}
+                          className="px-3 py-1 rounded-lg text-sm"
+                          style={{ 
+                            background: 'var(--input-background)',
+                            border: '1px solid var(--border)',
+                            color: 'var(--foreground)'
+                          }}
+                        >
+                          <option value="user">User</option>
+                          <option value="reviewer">Reviewer</option>
+                          <option value="admin">Admin</option>
+                        </select>
+                        {u.id !== user?.id && (
+                          <button
+                            onClick={() => handleDeleteUser(u.id)}
+                            className="p-2 rounded-lg transition-all hover:opacity-80"
+                            style={{ 
+                              background: 'var(--destructive)',
+                              color: '#ffffff'
+                            }}
+                            title="Delete User"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Main Content - Only show when no view is selected */}
-        {!selectedView && (
+        {!selectedView && !showUserManagement && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Onboarding Form - Figma Design */}
           <div className="p-8 rounded-xl shadow-sm transform transition-all duration-300" style={{ 
