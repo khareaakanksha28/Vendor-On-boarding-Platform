@@ -1,13 +1,13 @@
 {
   "files": {
     "main.css": "/Vendor-On-boarding-Platform/static/css/main.da8fd861.css",
-    "main.js": "/Vendor-On-boarding-Platform/static/js/main.e123041b.js",
+    "main.js": "/Vendor-On-boarding-Platform/static/js/main.89106d1a.js",
     "index.html": "/Vendor-On-boarding-Platform/index.html",
     "main.da8fd861.css.map": "/Vendor-On-boarding-Platform/static/css/main.da8fd861.css.map",
-    "main.e123041b.js.map": "/Vendor-On-boarding-Platform/static/js/main.e123041b.js.map"
+    "main.89106d1a.js.map": "/Vendor-On-boarding-Platform/static/js/main.89106d1a.js.map"
   },
   "entrypoints": [
     "static/css/main.da8fd861.css",
-    "static/js/main.e123041b.js"
+    "static/js/main.89106d1a.js"
   ]
 }
