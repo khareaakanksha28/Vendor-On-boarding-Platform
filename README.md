@@ -26,27 +26,7 @@ A comprehensive platform for automated vendor and client onboarding with ML-powe
 - Tailwind CSS
 - Lucide React Icons
 
-## Quick Start
 
-1. **Backend Setup:**
-   ```bash
-   cd backend
-   python3 -m venv venv
-   source venv/bin/activate
-   pip install -r requirements.txt
-   python app.py
-   ```
-
-2. **Frontend Setup:**
-   ```bash
-   cd frontend
-   npm install
-   npm start
-   ```
-
-3. **Access:**
-   - Frontend: http://localhost:3000
-   - Backend API: http://localhost:5001
 
 ## Default Credentials
 
@@ -78,7 +58,7 @@ onboarding-hub/
 - `DEPLOYMENT.md` - Deployment guide
 - `ARCHITECTURE.md` - System architecture details
 
-## License
-
-MIT
 # Vendor-On-boarding-Platform
+
+## Demo Video
+https://youtu.be/phfowPsI-g4
